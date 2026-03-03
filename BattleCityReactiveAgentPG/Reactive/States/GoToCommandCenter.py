@@ -10,79 +10,112 @@ class GoToCommandCenter(State):
         self.Reset()
 
     def Update(self, perception, map, agent):
-
-        #el agente no dispara inicialmente
-        shoot = False
-
-        #coordenadas agente
+        # 1. Analizar percepción básica
         agente_x = perception[AgentConsts.AGENT_X]
         agente_y = perception[AgentConsts.AGENT_Y]
+        shoot = False
 
-        #coordenadas centro de mando
-        command_center_x = perception[AgentConsts.COMMAND_CENTER_X]
-        command_center_y = perception[AgentConsts.COMMAND_CENTER_Y]
+        # 2. Selección de objetivo dinámico (CC -> Player -> Exit/Star)
+        target_x, target_y = self._select_target(perception)
 
-        #coordenadas jugador
-        player_x = perception[AgentConsts.PLAYER_X]
-        player_y = perception[AgentConsts.PLAYER_Y]
+        # 3. Lógica de movimiento base hacia el objetivo
+        self._move_towards(agente_x, agente_y, target_x, target_y)
 
-        #si el agente esta por encima de la command center y la command center no ha sido destruida (coordenadas en negativo)
-        if agente_y > command_center_y and (command_center_x > 0 and command_center_y > 0):
-            self.action = AgentConsts.MOVE_DOWN
-        if agente_y+0.5 == command_center_y and agente_x < command_center_x:
-            self.action = AgentConsts.MOVE_RIGHT
-        if agente_y+0.5 == command_center_y and agente_x > command_center_x:
-            self.action = AgentConsts.MOVE_LEFT
+        # 4. Ajustes por obstáculos y disparo proactivo
+        shoot = self._avoid_obstacles(perception, shoot)
 
-        #si el agente se mueve hacia abajo y tiene debajo un muro rompible o irrompible a menos de 2 de distancia
-        if self.action == AgentConsts.MOVE_DOWN and perception[AgentConsts.NEIGHBORHOOD_DIST_DOWN] < 0.5 and perception[AgentConsts.NEIGHBORHOOD_DOWN] in [AgentConsts.BRICK, AgentConsts.UNBREAKABLE]:
-            self.action = AgentConsts.MOVE_RIGHT
+        # 5. Prioridades reactivas (Combate y Supervivencia)
+        shoot = self._check_combat(perception, shoot)
+        shoot = self._check_survival(perception, shoot)
 
-        #si el agente se mueve hacia la derecha y tiene a la derecha un muro rompible o irrompible a menos de 2 de distancia
-        if self.action == AgentConsts.MOVE_RIGHT and perception[AgentConsts.NEIGHBORHOOD_DIST_RIGHT] < 0.5 and perception[AgentConsts.NEIGHBORHOOD_RIGHT] == AgentConsts.BRICK:
-            self.action = AgentConsts.MOVE_RIGHT
-            shoot = True 
-        #si el agente se mueve hacia la derecha y esta en la esquina derecha inferior
-        if self.action == AgentConsts.MOVE_RIGHT and perception[AgentConsts.NEIGHBORHOOD_DIST_RIGHT] < 0.5 and (perception[AgentConsts.NEIGHBORHOOD_RIGHT] == AgentConsts.UNBREAKABLE and perception[AgentConsts.NEIGHBORHOOD_DOWN] == AgentConsts.UNBREAKABLE):
-            self.action = AgentConsts.MOVE_UP
+        return self.action, shoot
 
-        #si el agente se mueve hacia arriba y encima hay un muro rompible o irrompible y a la derecha hay un muro irrompible
-        if self.action == AgentConsts.MOVE_UP and perception[AgentConsts.NEIGHBORHOOD_DIST_UP] < 0.5 and (perception[AgentConsts.NEIGHBORHOOD_UP] == AgentConsts.UNBREAKABLE or perception[AgentConsts.NEIGHBORHOOD_UP] == AgentConsts.BRICK) and perception[AgentConsts.NEIGHBORHOOD_RIGHT] == AgentConsts.UNBREAKABLE:
-            self.action = AgentConsts.MOVE_LEFT
+    def _select_target(self, perception):
+        """Selecciona el objetivo actual según el orden de prioridad."""
+        # Prioridad 1: Centro de Mando
+        tx = perception[AgentConsts.COMMAND_CENTER_X]
+        ty = perception[AgentConsts.COMMAND_CENTER_Y]
 
-        # --- PRIORIDADES Y REACCIONES ---
+        # Prioridad 2: Si el CC está destruido, buscamos al Player
+        if tx <= 0 or ty <= 0:
+            tx = perception[AgentConsts.PLAYER_X]
+            ty = perception[AgentConsts.PLAYER_Y]
+
+        # Prioridad 3: Si el Player también está destruido, buscamos la Estrella (Exit)
+        if tx <= 0 or ty <= 0:
+            tx = perception[AgentConsts.EXIT_X]
+            ty = perception[AgentConsts.EXIT_Y]
+            
+        return tx, ty
+
+    def _move_towards(self, ax, ay, tx, ty):
+        """Define el movimiento base para acercarse a las coordenadas objetivo."""
+        if tx > 0 and ty > 0:
+            if ay > ty:
+                self.action = AgentConsts.MOVE_DOWN
+            elif ay < ty:
+                self.action = AgentConsts.MOVE_UP
+            
+            if abs(ay - ty) < 0.5: # Alineados verticalmente
+                if ax < tx:
+                    self.action = AgentConsts.MOVE_RIGHT
+                elif ax > tx:
+                    self.action = AgentConsts.MOVE_LEFT
+
+    def _avoid_obstacles(self, perception, shoot):
+        """Detecta obstáculos delante y decide si disparar o esquivar."""
+        dist_frontal = 0.5
         
-        # 1. OBJETIVOS OFENSIVOS (Atacar si están alineados)
-        objetivos_ataque = [AgentConsts.PLAYER, AgentConsts.COMMAND_CENTER]
+        # Mapeo de sentidos y sensores
+        obstacle_sensors = {
+            AgentConsts.MOVE_DOWN: (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.NEIGHBORHOOD_DIST_DOWN, AgentConsts.MOVE_RIGHT),
+            AgentConsts.MOVE_UP: (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.NEIGHBORHOOD_DIST_UP, AgentConsts.MOVE_LEFT),
+            AgentConsts.MOVE_RIGHT: (AgentConsts.NEIGHBORHOOD_RIGHT, AgentConsts.NEIGHBORHOOD_DIST_RIGHT, AgentConsts.MOVE_UP),
+            AgentConsts.MOVE_LEFT: (AgentConsts.NEIGHBORHOOD_LEFT, AgentConsts.NEIGHBORHOOD_DIST_LEFT, AgentConsts.MOVE_DOWN)
+        }
+
+        if self.action in obstacle_sensors:
+            sensor, dist_sensor, turn_action = obstacle_sensors[self.action]
+            if perception[dist_sensor] < dist_frontal:
+                if perception[sensor] in [AgentConsts.BRICK, AgentConsts.SEMI_BREKABLE]:
+                    shoot = True
+                else: # Obstáculo irrompible, intentar girar
+                    self.action = turn_action
         
-        if perception[AgentConsts.NEIGHBORHOOD_DOWN] in objetivos_ataque and perception[AgentConsts.CAN_FIRE]:
-            self.action = AgentConsts.MOVE_DOWN
-            shoot = True
-        elif perception[AgentConsts.NEIGHBORHOOD_RIGHT] in objetivos_ataque and perception[AgentConsts.CAN_FIRE]:
-            self.action = AgentConsts.MOVE_RIGHT
-            shoot = True
-        elif perception[AgentConsts.NEIGHBORHOOD_UP] in objetivos_ataque and perception[AgentConsts.CAN_FIRE]:
-            self.action = AgentConsts.MOVE_UP
-            shoot = True
-        elif perception[AgentConsts.NEIGHBORHOOD_LEFT] in objetivos_ataque and perception[AgentConsts.CAN_FIRE]:
-            self.action = AgentConsts.MOVE_LEFT
-            shoot = True
+        return shoot
 
-        # 2. SUPERVIVENCIA (Máxima prioridad: interceptar balas)
-        if perception[AgentConsts.NEIGHBORHOOD_DOWN] == AgentConsts.SHELL and perception[AgentConsts.CAN_FIRE]:
-            self.action = AgentConsts.MOVE_DOWN
-            shoot = True
-        elif perception[AgentConsts.NEIGHBORHOOD_RIGHT] == AgentConsts.SHELL and perception[AgentConsts.CAN_FIRE]:
-            self.action = AgentConsts.MOVE_RIGHT
-            shoot = True
-        elif perception[AgentConsts.NEIGHBORHOOD_UP] == AgentConsts.SHELL and perception[AgentConsts.CAN_FIRE]:
-            self.action = AgentConsts.MOVE_UP
-            shoot = True
-        elif perception[AgentConsts.NEIGHBORHOOD_LEFT] == AgentConsts.SHELL and perception[AgentConsts.CAN_FIRE]:
-            self.action = AgentConsts.MOVE_LEFT
-            shoot = True
+    def _check_combat(self, perception, shoot):
+        """Verifica si hay objetivos ofensivos en línea de fuego."""
+        objetivos = [AgentConsts.PLAYER, AgentConsts.COMMAND_CENTER]
+        direcciones = [
+            (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.MOVE_DOWN),
+            (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.MOVE_UP),
+            (AgentConsts.NEIGHBORHOOD_RIGHT, AgentConsts.MOVE_RIGHT),
+            (AgentConsts.NEIGHBORHOOD_LEFT, AgentConsts.MOVE_LEFT)
+        ]
 
-        return self.action,shoot
+        for sensor, move in direcciones:
+            if perception[sensor] in objetivos and perception[AgentConsts.CAN_FIRE]:
+                self.action = move
+                shoot = True
+                break
+        return shoot
+
+    def _check_survival(self, perception, shoot):
+        """Verifica amenazas inmediatas (balas) para interceptarlas."""
+        direcciones = [
+            (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.MOVE_DOWN),
+            (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.MOVE_UP),
+            (AgentConsts.NEIGHBORHOOD_RIGHT, AgentConsts.MOVE_RIGHT),
+            (AgentConsts.NEIGHBORHOOD_LEFT, AgentConsts.MOVE_LEFT)
+        ]
+
+        for sensor, move in direcciones:
+            if perception[sensor] == AgentConsts.SHELL and perception[AgentConsts.CAN_FIRE]:
+                self.action = move
+                shoot = True
+                break
+        return shoot
     
     def Transit(self,perception, map):
         return self.id
