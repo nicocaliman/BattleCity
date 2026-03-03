@@ -10,6 +10,7 @@ class GoToCommandCenter(State):
         self.Reset()
 
     def Update(self, perception, map, agent):
+
         # 1. Analizar percepción básica
         agente_x = perception[AgentConsts.AGENT_X]
         agente_y = perception[AgentConsts.AGENT_Y]
@@ -31,36 +32,43 @@ class GoToCommandCenter(State):
         return self.action, shoot
 
     def _select_target(self, perception):
-        """Selecciona el objetivo actual según el orden de prioridad."""
-        # Prioridad 1: Centro de Mando
-        tx = perception[AgentConsts.COMMAND_CENTER_X]
-        ty = perception[AgentConsts.COMMAND_CENTER_Y]
+        """Selecciona el objetivo actual. Si el CC o el Player caen, vamos al Exit."""
+        cc_x = perception[AgentConsts.COMMAND_CENTER_X]
+        cc_y = perception[AgentConsts.COMMAND_CENTER_Y]
+        pl_x = perception[AgentConsts.PLAYER_X]
+        pl_y = perception[AgentConsts.PLAYER_Y]
 
-        # Prioridad 2: Si el CC está destruido, buscamos al Player
-        if tx <= 0 or ty <= 0:
-            tx = perception[AgentConsts.PLAYER_X]
-            ty = perception[AgentConsts.PLAYER_Y]
-
-        # Prioridad 3: Si el Player también está destruido, buscamos la Estrella (Exit)
-        if tx <= 0 or ty <= 0:
+        #si matamos al player o al CC, buscamos el exit (estrella)
+        if cc_x <= 0 or cc_y <= 0 or pl_x <= 0 or pl_y <= 0:
             tx = perception[AgentConsts.EXIT_X]
             ty = perception[AgentConsts.EXIT_Y]
+        else:
+            # si ambos están vivos, el objetivo principal es el Centro de Mando
+            tx = cc_x
+            ty = cc_y
             
         return tx, ty
 
     def _move_towards(self, ax, ay, tx, ty):
         """Define el movimiento base para acercarse a las coordenadas objetivo."""
         if tx > 0 and ty > 0:
+            # 1. Prioridad Vertical: Moverse arriba o abajo hasta estar en la misma "fila"
             if ay > ty:
                 self.action = AgentConsts.MOVE_DOWN
             elif ay < ty:
                 self.action = AgentConsts.MOVE_UP
             
-            if abs(ay - ty) < 0.5: # Alineados verticalmente
+            # 2. Prioridad Horizontal: Si ya estamos cerca verticalmente, nos movemos a los lados
+            if abs(ay - ty) < 0.5: 
                 if ax < tx:
                     self.action = AgentConsts.MOVE_RIGHT
                 elif ax > tx:
                     self.action = AgentConsts.MOVE_LEFT
+        
+        print("Accion: ", self.action)
+        print("Agente: ", ax, ay)
+        print("Objetivo: ", tx, ty)
+        print("Distancia: ", abs(ax - tx), abs(ay - ty))
 
     def _avoid_obstacles(self, perception, shoot):
         """Detecta obstáculos delante y decide si disparar o esquivar."""
