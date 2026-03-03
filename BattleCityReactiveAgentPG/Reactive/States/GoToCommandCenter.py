@@ -20,7 +20,7 @@ class GoToCommandCenter(State):
         target_x, target_y = self._select_target(perception)
 
         # 3. Lógica de movimiento base hacia el objetivo
-        self._move_towards(agente_x, agente_y, target_x, target_y)
+        self._move_towards(agente_x, agente_y, target_x, target_y, perception)
 
         # 4. Ajustes por obstáculos y disparo proactivo
         shoot = self._avoid_obstacles(perception, shoot)
@@ -49,46 +49,67 @@ class GoToCommandCenter(State):
             
         return tx, ty
 
-    def _move_towards(self, ax, ay, tx, ty):
+    def _move_towards(self, ax, ay, tx, ty, perception):
         """Define el movimiento base para acercarse a las coordenadas objetivo."""
         if tx > 0 and ty > 0:
-            # 1. Prioridad Vertical: Moverse arriba o abajo hasta estar en la misma "fila"
+            dist_min = 0.4
+            # 1. Intentar alineación Vertical
             if ay > ty:
-                self.action = AgentConsts.MOVE_DOWN
-            elif ay < ty:
-                self.action = AgentConsts.MOVE_UP
+                # Solo elegimos DOWN si no hay un muro irrompible bloqueando
+                if not (perception[AgentConsts.NEIGHBORHOOD_DIST_DOWN] < dist_min and perception[AgentConsts.NEIGHBORHOOD_DOWN] == AgentConsts.UNBREAKABLE):
+                    self.action = AgentConsts.MOVE_DOWN
+                else: # Si está bloqueado, intentamos movernos lateralmente
+                    self.action = AgentConsts.MOVE_RIGHT if ax < tx else AgentConsts.MOVE_LEFT
             
-            # 2. Prioridad Horizontal: Si ya estamos cerca verticalmente, nos movemos a los lados
+            elif ay < ty:
+                if not (perception[AgentConsts.NEIGHBORHOOD_DIST_UP] < dist_min and perception[AgentConsts.NEIGHBORHOOD_UP] == AgentConsts.UNBREAKABLE):
+                    self.action = AgentConsts.MOVE_UP
+                else: # Si está bloqueado, intentamos movernos lateralmente
+                    self.action = AgentConsts.MOVE_RIGHT if ax < tx else AgentConsts.MOVE_LEFT
+            
+            # 2. Si ya estamos cerca verticalmente, priorizamos horizontal
             if abs(ay - ty) < 0.5: 
                 if ax < tx:
-                    self.action = AgentConsts.MOVE_RIGHT
+                    if not (perception[AgentConsts.NEIGHBORHOOD_DIST_RIGHT] < dist_min and perception[AgentConsts.NEIGHBORHOOD_RIGHT] == AgentConsts.UNBREAKABLE):
+                        self.action = AgentConsts.MOVE_RIGHT
                 elif ax > tx:
-                    self.action = AgentConsts.MOVE_LEFT
-        
-        print("Accion: ", self.action)
-        print("Agente: ", ax, ay)
-        print("Objetivo: ", tx, ty)
-        print("Distancia: ", abs(ax - tx), abs(ay - ty))
+                    if not (perception[AgentConsts.NEIGHBORHOOD_DIST_LEFT] < dist_min and perception[AgentConsts.NEIGHBORHOOD_LEFT] == AgentConsts.UNBREAKABLE):
+                        self.action = AgentConsts.MOVE_LEFT
 
     def _avoid_obstacles(self, perception, shoot):
         """Detecta obstáculos delante y decide si disparar o esquivar."""
-        dist_frontal = 0.5
+        dist_frontal = 0.4 # Aumentado para mayor seguridad
         
-        # Mapeo de sentidos y sensores
-        obstacle_sensors = {
-            AgentConsts.MOVE_DOWN: (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.NEIGHBORHOOD_DIST_DOWN, AgentConsts.MOVE_RIGHT),
-            AgentConsts.MOVE_UP: (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.NEIGHBORHOOD_DIST_UP, AgentConsts.MOVE_LEFT),
-            AgentConsts.MOVE_RIGHT: (AgentConsts.NEIGHBORHOOD_RIGHT, AgentConsts.NEIGHBORHOOD_DIST_RIGHT, AgentConsts.MOVE_UP),
-            AgentConsts.MOVE_LEFT: (AgentConsts.NEIGHBORHOOD_LEFT, AgentConsts.NEIGHBORHOOD_DIST_LEFT, AgentConsts.MOVE_DOWN)
+        # Mapa de sentidos: (Sentido actual): (Sensor, Distancia, Giro_Primario, Giro_Secundario)
+        # El giro secundario ayuda si el primario también está bloqueado (esquinas)
+        obstacle_map = {
+            AgentConsts.MOVE_DOWN: (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.NEIGHBORHOOD_DIST_DOWN, AgentConsts.MOVE_RIGHT, AgentConsts.MOVE_LEFT),
+            AgentConsts.MOVE_UP: (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.NEIGHBORHOOD_DIST_UP, AgentConsts.MOVE_LEFT, AgentConsts.MOVE_RIGHT),
+            AgentConsts.MOVE_RIGHT: (AgentConsts.NEIGHBORHOOD_RIGHT, AgentConsts.NEIGHBORHOOD_DIST_RIGHT, AgentConsts.MOVE_UP, AgentConsts.MOVE_DOWN),
+            AgentConsts.MOVE_LEFT: (AgentConsts.NEIGHBORHOOD_LEFT, AgentConsts.NEIGHBORHOOD_DIST_LEFT, AgentConsts.MOVE_DOWN, AgentConsts.MOVE_UP)
         }
 
-        if self.action in obstacle_sensors:
-            sensor, dist_sensor, turn_action = obstacle_sensors[self.action]
+        if self.action in obstacle_map:
+            sensor, dist_sensor, turn1, turn2 = obstacle_map[self.action]
+            
+            # Si hay algo demasiado cerca
             if perception[dist_sensor] < dist_frontal:
-                if perception[sensor] in [AgentConsts.BRICK, AgentConsts.SEMI_BREKABLE]:
+                tipo = perception[sensor]
+                
+                # Caso A: Muro rompible -> Disparamos
+                if tipo in [AgentConsts.BRICK, AgentConsts.SEMI_BREKABLE]:
                     shoot = True
-                else: # Obstáculo irrompible, intentar girar
-                    self.action = turn_action
+                
+                # Caso B: Obstáculo irrompible (u otro agente/jugador si no podemos disparar)
+                elif tipo != AgentConsts.NOTHING:
+                    # Intentamos Girar al Primario
+                    self.action = turn1
+                    
+                    # Verificación extra: ¿El camino de giro también está bloqueado?
+                    # Para esto necesitaríamos mirar los sensores laterales, pero el agente reactivo
+                    # suele decidir en el siguiente frame. Para evitar "jitter", simplemente
+                    # confiamos en que en el siguiente frame la lógica de _move_towards 
+                    # entienda que el camino frontal sigue bloqueado.
         
         return shoot
 
