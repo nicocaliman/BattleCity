@@ -51,22 +51,29 @@ class GoToCommandCenter(State):
 
     def _move_towards(self, ax, ay, tx, ty, perception):
         """Define el movimiento base para acercarse a las coordenadas objetivo."""
+        #si el target sigue vivo
         if tx > 0 and ty > 0:
-            dist_min = 0.4
+            dist_min = 0.5
             # 1. Intentar alineación Vertical
+            #si el agente esta por encima del target
             if ay > ty:
                 # Solo elegimos DOWN si no hay un muro irrompible bloqueando
                 if not (perception[AgentConsts.NEIGHBORHOOD_DIST_DOWN] < dist_min and perception[AgentConsts.NEIGHBORHOOD_DOWN] == AgentConsts.UNBREAKABLE):
                     self.action = AgentConsts.MOVE_DOWN
                 else: # Si está bloqueado, intentamos movernos lateralmente
-                    self.action = AgentConsts.MOVE_RIGHT if ax < tx else AgentConsts.MOVE_LEFT
-            
+                    if ax < tx: #si el agente esta a la izquierda del target
+                        self.action = AgentConsts.MOVE_RIGHT
+                    else: #si el agente esta a la derecha del target
+                        self.action = AgentConsts.MOVE_LEFT            
+           #si el agente esta por debajo del target
             elif ay < ty:
                 if not (perception[AgentConsts.NEIGHBORHOOD_DIST_UP] < dist_min and perception[AgentConsts.NEIGHBORHOOD_UP] == AgentConsts.UNBREAKABLE):
                     self.action = AgentConsts.MOVE_UP
                 else: # Si está bloqueado, intentamos movernos lateralmente
-                    self.action = AgentConsts.MOVE_RIGHT if ax < tx else AgentConsts.MOVE_LEFT
-            
+                    if ax < tx: #si el agente esta a la izquierda del target
+                        self.action = AgentConsts.MOVE_RIGHT
+                    else: #si el agente esta a la derecha del target
+                        self.action = AgentConsts.MOVE_LEFT        
             # 2. Si ya estamos cerca verticalmente, priorizamos horizontal
             if abs(ay - ty) < 0.5: 
                 if ax < tx:
