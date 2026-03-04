@@ -76,10 +76,10 @@ class GoToCommandCenter(State):
                         self.action = AgentConsts.MOVE_LEFT        
             # 2. Si ya estamos cerca verticalmente, priorizamos horizontal
             if abs(ay - ty) < 0.5: 
-                if ax < tx:
+                if ax < tx: #si el agente esta a la izquierda del target
                     if not (perception[AgentConsts.NEIGHBORHOOD_DIST_RIGHT] < dist_min and perception[AgentConsts.NEIGHBORHOOD_RIGHT] == AgentConsts.UNBREAKABLE):
                         self.action = AgentConsts.MOVE_RIGHT
-                elif ax > tx:
+                elif ax > tx: #si el agente esta a la derecha del target
                     if not (perception[AgentConsts.NEIGHBORHOOD_DIST_LEFT] < dist_min and perception[AgentConsts.NEIGHBORHOOD_LEFT] == AgentConsts.UNBREAKABLE):
                         self.action = AgentConsts.MOVE_LEFT
 
@@ -89,6 +89,19 @@ class GoToCommandCenter(State):
         
         # Mapa de sentidos: (Sentido actual): (Sensor, Distancia, Giro_Primario, Giro_Secundario)
         # El giro secundario ayuda si el primario también está bloqueado (esquinas)
+       
+        #diccionario que relaciona el sentido actual con el sensor, la distancia, el giro primario y el giro secundario
+        # clave: sentido actual, valor: (sensor, distancia, giro primario, giro secundario) 
+        # valor = tupla de 4 elementos que representan el sensor, la distancia, el giro primario y el giro secundario (inmutables)
+        # sensor: sensor que detecta el obstáculo
+        # distancia: distancia al obstáculo
+        # giro primario: giro primario
+        # giro secundario: giro secundario
+        #ejemplo:
+        # si el sentido actual es MOVE_DOWN, el sensor que detecta el obstáculo es NEIGHBORHOOD_DOWN
+        # la distancia al obstáculo es NEIGHBORHOOD_DIST_DOWN
+        # el giro primario es MOVE_RIGHT
+        # el giro secundario es MOVE_LEFT
         obstacle_map = {
             AgentConsts.MOVE_DOWN: (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.NEIGHBORHOOD_DIST_DOWN, AgentConsts.MOVE_RIGHT, AgentConsts.MOVE_LEFT),
             AgentConsts.MOVE_UP: (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.NEIGHBORHOOD_DIST_UP, AgentConsts.MOVE_LEFT, AgentConsts.MOVE_RIGHT),
@@ -96,11 +109,23 @@ class GoToCommandCenter(State):
             AgentConsts.MOVE_LEFT: (AgentConsts.NEIGHBORHOOD_LEFT, AgentConsts.NEIGHBORHOOD_DIST_LEFT, AgentConsts.MOVE_DOWN, AgentConsts.MOVE_UP)
         }
 
+        #diccionario que relaciona el sentido actual con la distancia al obstáculo
+        # clave: sentido actual, valor: distancia al obstáculo
+        dist_sensores = {
+            AgentConsts.MOVE_UP : AgentConsts.NEIGHBORHOOD_DIST_UP,
+            AgentConsts.MOVE_DOWN : AgentConsts.NEIGHBORHOOD_DIST_DOWN,
+            AgentConsts.MOVE_RIGHT : AgentConsts.NEIGHBORHOOD_DIST_RIGHT,
+            AgentConsts.MOVE_LEFT : AgentConsts.NEIGHBORHOOD_DIST_LEFT
+        }
+
+        #si el sentido actual esta en el diccionario (agentconsts.move_down, agentconsts.move_up, agentconsts.move_right, agentconsts.move_left)
         if self.action in obstacle_map:
+            #desempaquetamos la tupla
             sensor, dist_sensor, turn1, turn2 = obstacle_map[self.action]
             
             # Si hay algo demasiado cerca
             if perception[dist_sensor] < dist_frontal:
+                #que tipo de obstaculo es en la direccion del sensor
                 tipo = perception[sensor]
                 
                 # Caso A: Muro rompible -> Disparamos
@@ -111,12 +136,11 @@ class GoToCommandCenter(State):
                 elif tipo != AgentConsts.NOTHING:
                     # Intentamos Girar al Primario
                     self.action = turn1
-                    
-                    # Verificación extra: ¿El camino de giro también está bloqueado?
-                    # Para esto necesitaríamos mirar los sensores laterales, pero el agente reactivo
-                    # suele decidir en el siguiente frame. Para evitar "jitter", simplemente
-                    # confiamos en que en el siguiente frame la lógica de _move_towards 
-                    # entienda que el camino frontal sigue bloqueado.
+                    #distancia al obstaculo en la direccion del giro primario
+                    dist_sensor = dist_sensores[self.action]
+                    #si hay algo demasiado cerca en la direccion del giro primario
+                    if perception[dist_sensor] < dist_frontal:
+                        self.action = turn2
         
         return shoot
 
