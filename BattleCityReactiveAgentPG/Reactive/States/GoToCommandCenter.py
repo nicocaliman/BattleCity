@@ -85,7 +85,7 @@ class GoToCommandCenter(State):
 
     def _avoid_obstacles(self, perception, shoot):
         """Detecta obstáculos delante y decide si disparar o esquivar."""
-        dist_frontal = 0.4 # Aumentado para mayor seguridad
+        dist_frontal = 0.5 # Aumentado para mayor seguridad
         
         # Mapa de sentidos: (Sentido actual): (Sensor, Distancia, Giro_Primario, Giro_Secundario)
         # El giro secundario ayuda si el primario también está bloqueado (esquinas)
