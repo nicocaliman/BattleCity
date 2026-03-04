@@ -140,6 +140,7 @@ class GoToCommandCenter(State):
                     dist_sensor = dist_sensores[self.action]
                     #si hay algo demasiado cerca en la direccion del giro primario
                     if perception[dist_sensor] < dist_frontal:
+                        #intentamos girar al secundario
                         self.action = turn2
         
         return shoot
