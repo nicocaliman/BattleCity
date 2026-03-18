@@ -13,8 +13,5 @@ from LGym.LGymClient import agentLoop
 from Agent.BaseAgent import BaseAgent
 from Reactive.ReactiveAgent import ReactiveAgent
 
-
 agent = ReactiveAgent("1","Kain")
 agentLoop(agent,True)
-
- 

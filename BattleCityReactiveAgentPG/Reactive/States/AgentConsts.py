@@ -19,7 +19,8 @@ class AgentConsts:
     LIFE_Y = 17
     EXIT_X = 18
     EXIT_Y = 19
-    TIME = 20
+    ORIENTATION = 20 # No la usamos de momento
+    TIME = 21
 
     #movimientos
     NO_MOVE = 0
