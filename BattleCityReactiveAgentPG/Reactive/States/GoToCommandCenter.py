@@ -1,7 +1,6 @@
-from StateMachine.State import State
-from States.AgentConsts import AgentConsts
+from StateMachine.State import State        #ve a la carpeta StateMachine, busca el archivo State y traeme la clase State
+from States.AgentConsts import AgentConsts  #ve a la carpeta States, busca el archivo AgentConsts y traeme la clase AgentConsts
 import random
-
 
 class GoToCommandCenter(State):
 
@@ -147,7 +146,8 @@ class GoToCommandCenter(State):
 
     def _check_combat(self, perception, shoot):
         """Verifica si hay objetivos ofensivos en línea de fuego."""
-        objetivos = [AgentConsts.PLAYER, AgentConsts.COMMAND_CENTER]
+        # AgentConsts.OTHER es el enemigo general añadido aquí
+        objetivos = [AgentConsts.PLAYER, AgentConsts.COMMAND_CENTER, AgentConsts.OTHER]
         direcciones = [
             (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.MOVE_DOWN),
             (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.MOVE_UP),
@@ -163,18 +163,32 @@ class GoToCommandCenter(State):
         return shoot
 
     def _check_survival(self, perception, shoot):
-        """Verifica amenazas inmediatas (balas) para interceptarlas."""
+        """Verifica amenazas inmediatas (balas) para interceptarlas o esquivarlas."""
         direcciones = [
-            (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.MOVE_DOWN),
-            (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.MOVE_UP),
-            (AgentConsts.NEIGHBORHOOD_RIGHT, AgentConsts.MOVE_RIGHT),
-            (AgentConsts.NEIGHBORHOOD_LEFT, AgentConsts.MOVE_LEFT)
+            (AgentConsts.NEIGHBORHOOD_DOWN, AgentConsts.MOVE_DOWN, [AgentConsts.MOVE_LEFT, AgentConsts.MOVE_RIGHT]),
+            (AgentConsts.NEIGHBORHOOD_UP, AgentConsts.MOVE_UP, [AgentConsts.MOVE_RIGHT, AgentConsts.MOVE_LEFT]),
+            (AgentConsts.NEIGHBORHOOD_RIGHT, AgentConsts.MOVE_RIGHT, [AgentConsts.MOVE_UP, AgentConsts.MOVE_DOWN]),
+            (AgentConsts.NEIGHBORHOOD_LEFT, AgentConsts.MOVE_LEFT, [AgentConsts.MOVE_DOWN, AgentConsts.MOVE_UP])
         ]
 
-        for sensor, move in direcciones:
-            if perception[sensor] == AgentConsts.SHELL and perception[AgentConsts.CAN_FIRE]:
-                self.action = move
-                shoot = True
+        for sensor, move, esquivas in direcciones:
+            if perception[sensor] == AgentConsts.SHELL:
+                if perception[AgentConsts.CAN_FIRE]:
+                    self.action = move
+                    shoot = True
+                else:
+                    # Si no podemos disparar, intentamos esquivar eligiendo otro sentido
+                    dist_sensores = {
+                        AgentConsts.MOVE_UP : AgentConsts.NEIGHBORHOOD_UP,
+                        AgentConsts.MOVE_DOWN : AgentConsts.NEIGHBORHOOD_DOWN,
+                        AgentConsts.MOVE_RIGHT : AgentConsts.NEIGHBORHOOD_RIGHT,
+                        AgentConsts.MOVE_LEFT : AgentConsts.NEIGHBORHOOD_LEFT
+                    }
+                    for esquiva in esquivas:
+                        snsr_esquiva = dist_sensores[esquiva]
+                        if perception[snsr_esquiva] != AgentConsts.UNBREAKABLE and perception[snsr_esquiva] != AgentConsts.BRICK:
+                            self.action = esquiva
+                            break
                 break
         return shoot
     
@@ -182,5 +196,5 @@ class GoToCommandCenter(State):
         return self.id
     
     def Reset(self):
-        self.action = random.randint(1,4)
-        self.updateTime = 0
+        self.action = random.randint(1,4)   #asigno una direccion valida para empezar a moverse
+        self.updateTime = 0 #reseteo el tiempo
